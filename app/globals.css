@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+  color: #e0e0e0;
+  font-family: 'Courier Prime', monospace;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1f3a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #00ff41;
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #00dd33;
+}
+
+/* Neon text glow */
+.neon-text {
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+}
+
+.neon-glow-green {
+  color: #00ff41;
+  text-shadow: 0 0 10px #00ff41, 0 0 20px #00ff41;
+}
+
+.neon-glow-red {
+  color: #ff006e;
+  text-shadow: 0 0 10px #ff006e, 0 0 20px #ff006e;
+}
+
+.neon-glow-blue {
+  color: #00d9ff;
+  text-shadow: 0 0 10px #00d9ff, 0 0 20px #00d9ff;
+}
+
+.neon-glow-purple {
+  color: #9d4edd;
+  text-shadow: 0 0 10px #9d4edd, 0 0 20px #9d4edd;
+}
+
+/* Glowing borders */
+.border-neon-green {
+  border-color: #00ff41;
+  box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.3);
+}
+
+.border-neon-red {
+  border-color: #ff006e;
+  box-shadow: inset 0 0 10px rgba(255, 0, 110, 0.3);
+}
+
+/* Smooth transitions */
+.transition-all-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glass morphism effect */
+.glass-card {
+  background: rgba(26, 31, 58, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(0, 255, 65, 0.1);
+  border-radius: 8px;
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 255, 65, 0.3);
+  background: rgba(26, 31, 58, 0.8);
+}
+
+/* Grid background */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 255, 65, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 65, 0.05) 1px, transparent 1px);
+  background-size: 50px 50px;
+}
