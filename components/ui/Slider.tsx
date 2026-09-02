@@ -1,25 +1,27 @@
 'use client';
 
-import { Slider as BaseSlider, SliderProps as BaseSliderProps } from '@radix-ui/react-slider';
+import * as RadixSlider from '@radix-ui/react-slider';
 import { motion } from 'framer-motion';
 
-interface SliderProps extends Omit<BaseSliderProps, 'onChange'> {
+interface CustomSliderProps extends Omit<RadixSlider.SliderProps, 'onValueChange' | 'value' | 'onChange'> {
   onChange?: (value: number) => void;
+  value?: number;
 }
 
-export function Slider({ onChange, ...props }: SliderProps) {
+export function Slider({ onChange, value, ...props }: CustomSliderProps) {
   return (
-    <BaseSlider
+    <RadixSlider.Root
       {...props}
+      value={value !== undefined ? [value] : undefined}
       onValueChange={(value) => onChange?.(value[0])}
       className="relative flex w-full items-center select-none touch-none"
     >
-      <BaseSlider.Track className="relative h-1.5 grow rounded-full bg-dark-surface border border-neon-green/20">
-        <BaseSlider.Range className="absolute h-full rounded-full bg-gradient-to-r from-neon-green to-neon-blue" />
-      </BaseSlider.Track>
+      <RadixSlider.Track className="relative h-1.5 grow rounded-full bg-dark-surface border border-neon-green/20">
+        <RadixSlider.Range className="absolute h-full rounded-full bg-gradient-to-r from-neon-green to-neon-blue" />
+      </RadixSlider.Track>
       <motion.div whileHover={{ scale: 1.2 }}>
-        <BaseSlider.Thumb className="block h-5 w-5 rounded-full bg-neon-green shadow-lg cursor-pointer hover:bg-neon-green" />
+        <RadixSlider.Thumb className="block h-5 w-5 rounded-full bg-neon-green shadow-lg cursor-pointer hover:bg-neon-green" />
       </motion.div>
-    </BaseSlider>
+    </RadixSlider.Root>
   );
 }
