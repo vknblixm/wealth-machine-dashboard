@@ -1,9 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactStrictMode: true,
+  output: 'export',
+  assetPrefix: '/wealth-machine-dashboard/',
   images: {
     unoptimized: true,
   },
+  trailingSlash: true,
 };
 
 module.exports = nextConfig;
