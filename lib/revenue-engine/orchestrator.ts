@@ -31,10 +31,6 @@ interface RevenueEntry {
   timestamp: string;
 }
 
-// ═══════════════════════════════════════════════════════
-// ENGINE STATUS
-// ═══════════════════════════════════════════════════════
-
 function loadStatus(): EngineStatus {
   if (!existsSync(STATUS_FILE)) {
     return {
@@ -73,12 +69,11 @@ function logRevenue(type: RevenueEntry['type'], amount: number, details: string)
 
 // ═══════════════════════════════════════════════════════
 // MAIN ENGINE CYCLE
-// One full cycle: hunt → outreach → deliver → report
 // ═══════════════════════════════════════════════════════
 
 export async function runEngineCycle(): Promise<{
   hunt: { found: number; total: number };
-  outreach: { sent: number; queued: number; totalPipeline: number };
+  outreach: { sent: number; totalSent: number; totalPipeline: number };
   deliveries: { processed: number; delivered: number };
   revenue: { total: number; today: number };
   status: EngineStatus;
@@ -105,12 +100,12 @@ export async function runEngineCycle(): Promise<{
     status.errors.push(msg);
   }
 
-  // ─── PHASE 2: OUTREACH ───
+  // ─── PHASE 2: OUTREACH — send emails to prospects with valid addresses ───
   console.log('\n📧 Phase 2: Running outreach...');
   const prospects = loadProspects();
-  let outreachResult = { sent: 0, queued: 0, totalSent: 0, totalPipeline: 0 };
+  let outreachResult = { sent: 0, skipped: 0, totalSent: 0, totalPipeline: 0 };
   try {
-    outreachResult = await runOutreach(prospects, 5);
+    outreachResult = await runOutreach(prospects, 10);
     status.lastOutreach = new Date().toISOString();
     if (outreachResult.sent > 0) {
       logRevenue('email-sent', 0, `${outreachResult.sent} emails sent, $${outreachResult.totalPipeline} pipeline`);
@@ -151,7 +146,6 @@ export async function runEngineCycle(): Promise<{
   const outreachLog = loadOutreachLog();
   const totalRevenue = deliveryStats.totalRevenue;
 
-  // Calculate today's revenue
   const today = new Date().toISOString().split('T')[0];
   const revenueLog: RevenueEntry[] = existsSync(REVENUE_LOG)
     ? JSON.parse(readFileSync(REVENUE_LOG, 'utf-8'))
@@ -160,7 +154,6 @@ export async function runEngineCycle(): Promise<{
     .filter((r) => r.timestamp.startsWith(today))
     .reduce((sum, r) => sum + r.amount, 0);
 
-  // Uptime calculation
   const startedAt = new Date(status.startedAt);
   const uptimeMs = Date.now() - startedAt.getTime();
   const uptimeHours = Math.floor(uptimeMs / (1000 * 60 * 60));
@@ -169,12 +162,11 @@ export async function runEngineCycle(): Promise<{
   status.isRunning = false;
   saveStatus(status);
 
-  // Print report
   console.log(`\n${'─'.repeat(60)}`);
   console.log(`📊 CYCLE #${status.totalCycles} COMPLETE`);
   console.log(`${'─'.repeat(60)}`);
   console.log(`  🔍 Prospects found:  ${huntResult.found} new (total: ${huntResult.total})`);
-  console.log(`  📧 Emails sent:     ${outreachResult.sent} (queued: ${outreachResult.queued})`);
+  console.log(`  📧 Emails sent:     ${outreachResult.sent} (total sent ever: ${outreachResult.totalSent})`);
   console.log(`  💰 Pipeline value:  $${outreachResult.totalPipeline.toLocaleString()}`);
   console.log(`  📦 Deliveries:      ${deliveryResult.delivered} completed`);
   console.log(`  💵 Total revenue:   $${totalRevenue.toLocaleString()}`);
@@ -186,7 +178,7 @@ export async function runEngineCycle(): Promise<{
     hunt: { found: huntResult.found, total: huntResult.total },
     outreach: {
       sent: outreachResult.sent,
-      queued: outreachResult.queued,
+      totalSent: outreachResult.totalSent,
       totalPipeline: outreachResult.totalPipeline,
     },
     deliveries: {
@@ -199,14 +191,13 @@ export async function runEngineCycle(): Promise<{
 }
 
 // ═══════════════════════════════════════════════════════
-// AUTO-START
-// Begins the engine loop on import
+// ENGINE LIFECYCLE
 // ═══════════════════════════════════════════════════════
 
 let engineInterval: ReturnType<typeof setInterval> | null = null;
 
 export function startEngine(intervalMs: number = 5 * 60 * 1000) {
-  if (engineInterval) return; // Already running
+  if (engineInterval) return;
 
   const status = loadStatus();
   status.isRunning = true;
@@ -216,10 +207,8 @@ export function startEngine(intervalMs: number = 5 * 60 * 1000) {
   console.log('🚀 REVENUE ENGINE STARTED');
   console.log(`   Cycle interval: ${intervalMs / 1000}s`);
 
-  // Run first cycle immediately
   runEngineCycle().catch(console.error);
 
-  // Then run on interval
   engineInterval = setInterval(() => {
     runEngineCycle().catch(console.error);
   }, intervalMs);

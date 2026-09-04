@@ -31,40 +31,25 @@ export async function POST(req: NextRequest) {
   // Store lead
   leads.push(lead);
 
-  // Forward to email service if configured
+  // Forward welcome email via Resend API if configured
   if (process.env.RESEND_API_KEY) {
     try {
-      const resend = require('resend')(process.env.RESEND_API_KEY);
-      await resend.emails.send({
-        from: process.env.FROM_EMAIL || 'Wealth Machine <hello@yourdomain.com>',
-        to: email,
-        subject: '🔥 Welcome to the Wealth Machine',
-        html: `
-          <h1>Welcome ${name || 'to the Wealth Machine'}!</h1>
-          <p>You're in. Your wealth machine is activating.</p>
-          <p>While the system initializes, here's what's coming:</p>
-          <ul>
-            <li>AI agents ready to hunt revenue 24/7</li>
-            <li>Automated deal closing pipeline</li>
-            <li>Real-time revenue tracking</li>
-          </ul>
-          <p>We'll be in touch within 24 hours with your access.</p>
-        `,
+      await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          from: process.env.FROM_EMAIL || 'PulseRevenue <onboarding@resend.dev>',
+          to: email,
+          subject: '🔥 Welcome to PulseRevenue — Your AI Revenue Engine',
+          text: `Hi ${name || 'there'},\n\nYou're in! Your AI revenue engine is activating.\n\nWhat's coming:\n- AI agents hunting revenue 24/7\n- Automated deal closing pipeline\n- Real-time revenue tracking\n\nWe'll be in touch within 24 hours with your access.\n\n— PulseRevenue`,
+        }),
       });
+      console.log(`[LEAD] Welcome email sent to ${email}`);
     } catch (e: any) {
-      console.error('Email send failed:', e.message);
-    }
-  }
-
-  // Forward to Mailchimp if configured
-  if (process.env.MAILCHIMP_API_KEY && process.env.MAILCHIMP_LIST_ID) {
-    try {
-      const mc = require('@mailchimp/mailchimp_transactional')(
-        process.env.MAILCHIMP_API_KEY
-      );
-      // Or use their REST API for list signup
-    } catch (e) {
-      // Silent fail
+      console.error('Lead email failed:', e.message);
     }
   }
 

@@ -1,5 +1,6 @@
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { findEmailForProspect } from './email-finder';
 
 const DATA_DIR = join(process.cwd(), '.revenue-engine');
 const PROSPECTS_FILE = join(DATA_DIR, 'prospects.json');
@@ -59,7 +60,7 @@ function detectPainPoints(text: string, title: string): string[] {
     [/looking for (a |an )?(agency|consultant|freelancer)/i, 'consulting'],
     [/hiring|seeking|looking for work|freelance available/i, 'services-needed'],
     [/just (launched|shipped|released)/i, 'post-launch-growth'],
-    [/need (a |some )?(co-founder|technical|cto)/i, 'dev-services'],
+    [/need (a |an )?(co-founder|technical|cto)/i, 'dev-services'],
     [/build (a |an |my )?(mvp|app|platform|saas)/i, 'dev-services'],
     [/how (do i|can i) (get|find|acquire)/i, 'lead-gen'],
   ];
@@ -74,9 +75,7 @@ function detectPainPoints(text: string, title: string): string[] {
 }
 
 // ═══════════════════════════════════════════════════════
-// SOURCE 1: HackerNews — extract ACTUAL PEOPLE from threads
-// Fetches "Who is hiring?", "Who wants to be hired?", 
-// "Ask HN", "Show HN" and extracts commenters with needs
+// SOURCE 1: HackerNews
 // ═══════════════════════════════════════════════════════
 
 interface HNComment {
@@ -99,15 +98,14 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
   const prospects: Partial<Prospect>[] = [];
 
   try {
-    // Get job stories, ask stories, and show stories
     const [jobIds, askIds, showIds] = await Promise.all([
       fetch('https://hacker-news.firebaseio.com/v0/jobstories.json').then(r => r.json()).catch(() => []),
       fetch('https://hacker-news.firebaseio.com/v0/askstories.json').then(r => r.json()).catch(() => []),
       fetch('https://hacker-news.firebaseio.com/v0/showstories.json').then(r => r.json()).catch(() => []),
     ]);
 
-    // ─── JOB STORIES — real companies that are hiring (have budget!) ───
-    const topJobs = (jobIds || []).slice(0, 20);
+    // Job stories — real companies hiring (have budget!)
+    const topJobs = (jobIds || []).slice(0, 25);
     for (let i = 0; i < topJobs.length; i += 5) {
       const batch = topJobs.slice(i, i + 5);
       const items = await Promise.all(batch.map(fetchHNItem));
@@ -116,8 +114,6 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
         if (!item?.by || !item?.title) continue;
         const text = item.title + ' ' + (item.text || '');
         const painPoints = detectPainPoints(text, item.title);
-
-        // Extract email from job post body
         const emailMatch = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
         const websiteMatch = text.match(/https?:\/\/[^\s<"']+/);
 
@@ -136,8 +132,8 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
       }
     }
 
-    // ─── ASK HN — people asking for help/advice ───
-    const topAsk = (askIds || []).slice(0, 10);
+    // Ask HN — people asking for help
+    const topAsk = (askIds || []).slice(0, 12);
     for (const threadId of topAsk) {
       const thread = await fetchHNItem(threadId);
       if (!thread?.title) continue;
@@ -160,7 +156,7 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
         console.log(`  🎯 Ask HN: ${thread.by} — ${thread.title.substring(0, 60)}`);
       }
 
-      // Also scan top-level comments for people describing problems
+      // Scan comments for people describing problems
       if (thread.kids) {
         const commentIds = thread.kids.slice(0, 15);
         for (let i = 0; i < commentIds.length; i += 5) {
@@ -188,7 +184,7 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
       }
     }
 
-    // ─── SHOW HN — founders who just launched and need growth ───
+    // Show HN — founders who just launched
     const topShow = (showIds || []).slice(0, 15);
     for (const threadId of topShow) {
       const thread = await fetchHNItem(threadId);
@@ -207,7 +203,6 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
       });
       console.log(`  🎯 Show HN: ${thread.by} — ${thread.title.substring(0, 60)}`);
     }
-
   } catch (e) {
     console.error('HackerNews hunt failed:', (e as Error).message);
   }
@@ -216,47 +211,7 @@ async function huntHackerNews(): Promise<Partial<Prospect>[]> {
 }
 
 // ═══════════════════════════════════════════════════════
-// SOURCE 2: Google Custom Search — find businesses that need help
-// ═══════════════════════════════════════════════════════
-
-async function huntGoogleBusinesses(keywords: string[], location: string): Promise<Partial<Prospect>[]> {
-  const prospects: Partial<Prospect>[] = [];
-
-  if (!process.env.GOOGLE_API_KEY || !process.env.GOOGLE_CX) {
-    return prospects;
-  }
-
-  for (const keyword of keywords) {
-    try {
-      const query = `${keyword} ${location}`;
-      const url = `https://www.googleapis.com/customsearch/v1?key=${process.env.GOOGLE_API_KEY}&cx=${process.env.GOOGLE_CX}&q=${encodeURIComponent(query)}&num=10`;
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (data.items) {
-        for (const item of data.items) {
-          prospects.push({
-            name: item.title?.split(' - ')[0] || 'Unknown Business',
-            website: item.link,
-            industry: keyword,
-            source: 'google-search',
-            painPoints: detectPainPoints(item.snippet || '', item.title || ''),
-            notes: item.snippet || '',
-            estimatedValue: 2000,
-          });
-        }
-      }
-    } catch (e) {
-      console.error(`Google hunt failed for "${keyword}":`, (e as Error).message);
-    }
-  }
-
-  return prospects;
-}
-
-// ═══════════════════════════════════════════════════════
-// SOURCE 3: Reddit — extract real users asking for help
-// Uses public RSS/JSON endpoints, no API key needed
+// SOURCE 2: Reddit — real users asking for help
 // ═══════════════════════════════════════════════════════
 
 async function huntReddit(keywords: string[]): Promise<Partial<Prospect>[]> {
@@ -270,7 +225,6 @@ async function huntReddit(keywords: string[]): Promise<Partial<Prospect>[]> {
 
   for (const sub of subreddits) {
     try {
-      // Use old.reddit.com JSON endpoint (more reliable)
       const url = `https://old.reddit.com/r/${sub}/new.json?limit=15`;
       const res = await fetch(url, {
         headers: { 'User-Agent': 'RevenueBot/1.0 (compatible)' },
@@ -287,7 +241,6 @@ async function huntReddit(keywords: string[]): Promise<Partial<Prospect>[]> {
           const painPoints = detectPainPoints(fullText, d.title);
 
           if (painPoints.length > 0) {
-            // Try to extract email or website from post body
             const emailMatch = fullText.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
             const websiteMatch = fullText.match(/https?:\/\/[^\s<"')]+/);
 
@@ -307,7 +260,6 @@ async function huntReddit(keywords: string[]): Promise<Partial<Prospect>[]> {
         }
       }
 
-      // Rate limit: don't hammer Reddit
       await new Promise(r => setTimeout(r, 1500));
     } catch (e) {
       console.error(`Reddit hunt failed for r/${sub}:`, (e as Error).message);
@@ -318,20 +270,18 @@ async function huntReddit(keywords: string[]): Promise<Partial<Prospect>[]> {
 }
 
 // ═══════════════════════════════════════════════════════
-// SOURCE 4: IndieHackers — founders building in public
+// SOURCE 3: IndieHackers
 // ═══════════════════════════════════════════════════════
 
 async function huntIndieHackers(): Promise<Partial<Prospect>[]> {
   const prospects: Partial<Prospect>[] = [];
 
   try {
-    // Scrape the public IndieHackers product page
     const res = await fetch('https://www.indiehackers.com/', {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevenueBot/1.0)' },
     });
     const html = await res.text();
 
-    // Extract product names and URLs from the page
     const productMatches = html.match(/\/product\/[^"]+"/g) || [];
     const nameMatches = html.match(/class="[^"]*product-name[^"]*"[^>]*>([^<]+)/g) || [];
 
@@ -358,7 +308,7 @@ async function huntIndieHackers(): Promise<Partial<Prospect>[]> {
 }
 
 // ═══════════════════════════════════════════════════════
-// SOURCE 5: RSS Feeds — public feeds with no API key
+// SOURCE 4: RSS Feeds
 // ═══════════════════════════════════════════════════════
 
 async function huntRSSFeeds(): Promise<Partial<Prospect>[]> {
@@ -414,7 +364,7 @@ async function huntRSSFeeds(): Promise<Partial<Prospect>[]> {
 }
 
 // ═══════════════════════════════════════════════════════
-// SOURCE 6: Product Hunt — founders who just launched
+// SOURCE 5: Product Hunt
 // ═══════════════════════════════════════════════════════
 
 async function huntProductLaunches(): Promise<Partial<Prospect>[]> {
@@ -451,6 +401,58 @@ async function huntProductLaunches(): Promise<Partial<Prospect>[]> {
 }
 
 // ═══════════════════════════════════════════════════════
+// SOURCE 6: GitHub — find developers with contact info
+// ═══════════════════════════════════════════════════════
+
+async function huntGitHub(): Promise<Partial<Prospect>[]> {
+  const prospects: Partial<Prospect>[] = [];
+
+  const queries = [
+    'looking for clients',
+    'available for hire',
+    'need funding',
+    'just launched',
+    'looking for co-founder',
+    'need a developer',
+    'open to work',
+  ];
+
+  for (const query of queries.slice(0, 3)) {
+    try {
+      const url = `https://api.github.com/search/issues?q=${encodeURIComponent(query + ' is:issue is:open')}&sort=created&order=desc&per_page=10`;
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'RevenueBot/1.0', 'Accept': 'application/vnd.github.v3+json' },
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+
+      for (const item of (data.items || []).slice(0, 5)) {
+        if (!item.user) continue;
+        const text = item.title + ' ' + (item.body || '');
+        const painPoints = detectPainPoints(text, item.title);
+
+        prospects.push({
+          name: item.user.login,
+          email: null,
+          website: item.user.html_url,
+          industry: 'developer',
+          painPoints: painPoints.length > 0 ? painPoints : ['services-needed'],
+          source: 'github',
+          score: 50,
+          notes: item.title.substring(0, 200),
+          estimatedValue: 1500,
+        });
+      }
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (e) {
+      console.error(`GitHub hunt failed for "${query}":`, (e as Error).message);
+    }
+  }
+
+  return prospects;
+}
+
+// ═══════════════════════════════════════════════════════
 // SERVICE MATCHING
 // ═══════════════════════════════════════════════════════
 
@@ -478,10 +480,15 @@ export function matchService(painPoints: string[]): { name: string; price: numbe
 }
 
 // ═══════════════════════════════════════════════════════
-// EMAIL ENRICHMENT
-// After finding prospects, enrich them with real contact info
-// from HN profiles, websites, and public data
+// EMAIL ENRICHMENT — Find real email addresses
 // ═══════════════════════════════════════════════════════
+
+function isValidEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+  if (email.includes('example.com') || email.includes('test.com') || email.includes('sentry.io')) return false;
+  return true;
+}
 
 async function enrichHNProfile(username: string): Promise<{ email: string | null; website: string | null }> {
   try {
@@ -490,13 +497,9 @@ async function enrichHNProfile(username: string): Promise<{ email: string | null
     if (!user) return { email: null, website: null };
 
     const about = user.about || '';
-    
-    // Extract email from HN profile 'about' field
     const emailMatch = about.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
-    
-    // Extract website from HN profile
     const websiteMatch = about.match(/https?:\/\/[^\s<"']+/);
-    
+
     return {
       email: emailMatch ? emailMatch[0] : null,
       website: websiteMatch ? websiteMatch[0] : null,
@@ -513,45 +516,58 @@ async function enrichFromWebsite(url: string): Promise<{ email: string | null }>
       signal: AbortSignal.timeout(5000),
     });
     const html = await res.text();
-    
+
     // Look for email in common patterns
     const emailPatterns = [
-      // mailto: links
       /mailto:([\w.+-]+@[\w-]+\.[\w.]+)/i,
-      // Contact page emails
       /[\w.+-]+@[\w-]+\.[\w.]+/,
     ];
-    
+
     for (const pattern of emailPatterns) {
       const match = html.match(pattern);
       if (match) {
         const email = match[1] || match[0];
-        // Filter out common non-personal emails
-        if (!email.match(/(noreply|no-reply|support|admin|info|hello|contact|webmaster)@/i)) {
+        if (!email.match(/(noreply|no-reply|support|admin|info|hello|contact|webmaster|abuse|postmaster)@/i)) {
           return { email };
         }
       }
     }
-    
+
     return { email: null };
   } catch {
     return { email: null };
   }
 }
 
+async function enrichGitHubProfile(username: string): Promise<{ email: string | null; website: string | null }> {
+  try {
+    const res = await fetch(`https://api.github.com/users/${username}`, {
+      headers: { 'User-Agent': 'RevenueBot/1.0', 'Accept': 'application/vnd.github.v3+json' },
+    });
+    if (!res.ok) return { email: null, website: null };
+    const user = await res.json();
+
+    return {
+      email: user.email || null,
+      website: user.blog || user.html_url,
+    };
+  } catch {
+    return { email: null, website: null };
+  }
+}
+
 async function enrichRedditUser(username: string): Promise<{ email: string | null; website: string | null }> {
   try {
-    // Reddit user profile page has public info
     const res = await fetch(`https://www.reddit.com/user/${username}/about.json`, {
       headers: { 'User-Agent': 'RevenueBot/1.0 (compatible)' },
     });
     if (!res.ok) return { email: null, website: null };
     const data = await res.json();
     const about = data?.data?.subreddit?.public_description || data?.data?.subreddit?.description || '';
-    
+
     const emailMatch = about.match(/[\w.+-]+@[\w-]+\.[\w.]+/);
     const websiteMatch = about.match(/https?:\/\/[^\s<"']+/);
-    
+
     return {
       email: emailMatch ? emailMatch[0] : null,
       website: websiteMatch ? websiteMatch[0] : null,
@@ -564,63 +580,70 @@ async function enrichRedditUser(username: string): Promise<{ email: string | nul
 async function enrichProspects(prospects: Prospect[]): Promise<void> {
   const needsEnrichment = prospects.filter(p => !p.email && p.score >= 40);
   console.log(`  🔎 Enriching ${needsEnrichment.length} prospects for contact info...`);
-  
+
   let enriched = 0;
-  
-  for (const prospect of needsEnrichment.slice(0, 25)) {
-    // Try HN profile enrichment
-    if ((prospect.source.includes('hackernews') || prospect.source === 'hackernews-jobs') && !prospect.email) {
+
+  for (const prospect of needsEnrichment.slice(0, 30)) {
+    // HN profile enrichment
+    if (prospect.source.includes('hackernews') && !prospect.email) {
       const hnUsername = prospect.name.replace(/ \(HN\)/, '').trim();
       const hnData = await enrichHNProfile(hnUsername);
       if (hnData.email) {
         prospect.email = hnData.email;
         enriched++;
-        console.log(`  ✅ Found email for ${prospect.name}: ${hnData.email}`);
+        console.log(`  ✅ HN email: ${prospect.name} → ${hnData.email}`);
       }
       if (hnData.website && !prospect.website) {
         prospect.website = hnData.website;
       }
     }
-    
-    // Try Reddit profile enrichment
+
+    // GitHub profile enrichment
+    if (prospect.source === 'github' && !prospect.email) {
+      const ghData = await enrichGitHubProfile(prospect.name);
+      if (ghData.email) {
+        prospect.email = ghData.email;
+        enriched++;
+        console.log(`  ✅ GitHub email: ${prospect.name} → ${ghData.email}`);
+      }
+      if (ghData.website && !prospect.website) {
+        prospect.website = ghData.website;
+      }
+    }
+
+    // Reddit profile enrichment
     if (prospect.source.includes('reddit') && !prospect.email) {
       const redditUser = prospect.name.replace(/^\//, '').replace('u/', '');
       const redditData = await enrichRedditUser(redditUser);
       if (redditData.email) {
         prospect.email = redditData.email;
         enriched++;
-        console.log(`  ✅ Found email for ${prospect.name}: ${redditData.email}`);
+        console.log(`  ✅ Reddit email: ${prospect.name} → ${redditData.email}`);
       }
       if (redditData.website && !prospect.website) {
         prospect.website = redditData.website;
       }
     }
-    
-    // Try website scraping for any prospect with a website
+
+    // Website scraping for any prospect with a website
     if (!prospect.email && prospect.website) {
       const webData = await enrichFromWebsite(prospect.website);
       if (webData.email) {
         prospect.email = webData.email;
         enriched++;
-        console.log(`  ✅ Found email on website for ${prospect.name}: ${webData.email}`);
+        console.log(`  ✅ Website email: ${prospect.name} → ${webData.email}`);
       }
     }
-    
+
     await new Promise(r => setTimeout(r, 300));
   }
-  
+
   console.log(`  📧 Enrichment complete: ${enriched} emails found`);
 }
 
 // ═══════════════════════════════════════════════════════
 // MAIN HUNT FUNCTION
 // ═══════════════════════════════════════════════════════
-
-const SEARCH_KEYWORDS = [
-  'need website', 'need developer', 'looking for marketing help',
-  'struggling with seo', 'need leads', 'need customers',
-  'startup help', 'freelance needed', 'build mvp', 'need co-founder',
-];
 
 export async function runProspectHunt(): Promise<{ found: number; total: number; topProspects: Prospect[] }> {
   console.log('🔍 Starting prospect hunt...');
@@ -629,11 +652,11 @@ export async function runProspectHunt(): Promise<{ found: number; total: number;
   // Run all hunters in parallel
   const results = await Promise.allSettled([
     huntHackerNews(),
-    huntGoogleBusinesses(SEARCH_KEYWORDS.slice(0, 3), 'USA'),
-    huntReddit(SEARCH_KEYWORDS.slice(0, 4)),
+    huntReddit([]),
     huntIndieHackers(),
     huntProductLaunches(),
     huntRSSFeeds(),
+    huntGitHub(),
   ]);
 
   const rawProspects = results
@@ -681,10 +704,29 @@ export async function runProspectHunt(): Promise<{ found: number; total: number;
   existing.sort((a, b) => b.score - a.score);
   saveProspects(existing);
 
-  // ─── ENRICHMENT: Find emails for prospects that don't have them ───
+  // Enrichment: find emails for prospects that don't have them
   try {
+    // First pass: basic enrichment (HN profiles, Reddit profiles)
     await enrichProspects(existing);
-    saveProspects(existing); // Save enriched data
+
+    // Second pass: advanced email finder (website scraping, pattern guessing, GitHub commits)
+    const stillNeedEmail = existing.filter(p => !p.email && p.score >= 30);
+    console.log(`  🔎 Advanced email discovery for ${stillNeedEmail.length} prospects...`);
+    let advancedFound = 0;
+    for (const prospect of stillNeedEmail.slice(0, 30)) {
+      try {
+        const result = await findEmailForProspect(prospect.name, prospect.website, prospect.source);
+        if (result && result.confidence >= 50) {
+          prospect.email = result.email;
+          advancedFound++;
+          console.log(`  ✅ Found: ${prospect.name} → ${result.email} (${result.method})`);
+        }
+        await new Promise(r => setTimeout(r, 200));
+      } catch {}
+    }
+    console.log(`  📧 Advanced discovery: ${advancedFound} emails found`);
+
+    saveProspects(existing);
   } catch (e) {
     console.error('Enrichment error:', (e as Error).message);
   }

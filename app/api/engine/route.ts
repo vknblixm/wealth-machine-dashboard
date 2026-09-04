@@ -11,16 +11,20 @@ export async function GET() {
   const outreachLog = loadOutreachLog();
   const deliveries = getDeliveryStats();
 
+  const withEmails = prospects.filter(p => p.email && p.email !== 'no-email-found');
+
   return NextResponse.json({
     status,
     prospects: {
       total: prospects.length,
       found: prospects.filter((p) => p.status === 'found').length,
+      withEmails: withEmails.length,
       contacted: prospects.filter((p) => p.status === 'contacted').length,
       replied: prospects.filter((p) => p.status === 'replied').length,
       closed: prospects.filter((p) => p.status === 'closed').length,
       topProspects: prospects.slice(0, 10).map((p) => ({
         name: p.name,
+        email: p.email,
         industry: p.industry,
         painPoints: p.painPoints,
         score: p.score,
@@ -29,11 +33,12 @@ export async function GET() {
       })),
     },
     outreach: {
-      totalSent: outreachLog.length,
-      emailsSent: outreachLog.filter((r) => r.status === 'sent').length,
+      total: outreachLog.length,
+      sent: outreachLog.filter((r) => r.status === 'sent').length,
       queued: outreachLog.filter((r) => r.status === 'queued').length,
       recentEmails: outreachLog.slice(-5).map((r) => ({
         to: r.prospectName,
+        email: r.email,
         subject: r.subject,
         service: r.serviceType,
         status: r.status,
