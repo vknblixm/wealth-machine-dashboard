@@ -41,8 +41,12 @@ export async function POST(req: NextRequest) {
   const wallet = getOrCreateWallet();
 
   if (action === 'balance') {
-    const balance = await checkBalance(wallet.address);
-    return NextResponse.json({ address: wallet.address, balance });
+    try {
+      const balance = await checkBalance(wallet.address);
+      return NextResponse.json({ address: wallet.address, balance });
+    } catch {
+      return NextResponse.json({ address: wallet.address, balance: { eth: '0', usdt: '0', usdc: '0', totalUsdEstimate: '0' } });
+    }
   }
 
   if (action === 'withdraw-info') {

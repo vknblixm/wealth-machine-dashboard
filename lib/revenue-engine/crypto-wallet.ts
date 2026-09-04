@@ -82,40 +82,60 @@ export function getWalletPublicInfo() {
   };
 }
 
-// Check ETH balance using free public RPC (no API key)
+// Check ETH balance using raw JSON-RPC fetch (no provider detection overhead)
 export async function checkBalance(address: string): Promise<{
   eth: string;
   usdt: string;
   usdc: string;
   totalUsdEstimate: string;
 }> {
-  // Free public Ethereum RPCs
+  // Free public Ethereum RPCs — tried in order, first success wins
   const rpcs = [
     'https://eth.llamarpc.com',
     'https://rpc.ankr.com/eth',
     'https://ethereum.publicnode.com',
+    'https://cloudflare-eth.com',
   ];
 
   let ethBalance = '0';
 
   for (const rpc of rpcs) {
     try {
-      const provider = new ethers.JsonRpcProvider(rpc);
-      const balance = await provider.getBalance(address);
-      ethBalance = ethers.formatEther(balance);
-      break;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+
+      const res = await fetch(rpc, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'eth_getBalance',
+          params: [address, 'latest'],
+          id: 1,
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      const data = await res.json();
+
+      if (data.result) {
+        // Convert hex to decimal, then to ether
+        const balanceHex = data.result;
+        const balanceWei = BigInt(balanceHex).toString();
+        ethBalance = ethers.formatEther(balanceWei);
+        break;
+      }
     } catch {
       continue;
     }
   }
 
-  // For ERC-20 tokens (USDT/USDC), we'd need to query contract calls
-  // Simplified: just return ETH balance for now
   return {
     eth: ethBalance,
     usdt: '0',
     usdc: '0',
-    totalUsdEstimate: ethBalance, // ~USD equivalent, rough estimate
+    totalUsdEstimate: ethBalance,
   };
 }
 
@@ -126,11 +146,15 @@ export async function getRecentTransactions(address: string): Promise<Array<{
   value: string;
   timestamp: string;
 }>> {
-  // Use Etherscan free API (no key for basic reads)
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const res = await fetch(
-      `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&page=1&offset=10`
+      `https://api.etherscan.io/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=desc&page=1&offset=10`,
+      { signal: controller.signal }
     );
+    clearTimeout(timeout);
     const data = await res.json();
 
     if (data.status !== '1' || !data.result) return [];
