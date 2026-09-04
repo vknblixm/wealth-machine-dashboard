@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuroraBackground } from '@/components/animations/AuroraBackground';
 import { LuxuryParticles } from '@/components/animations/LuxuryParticles';
@@ -90,6 +90,22 @@ export default function SalesPage() {
   const [showSuccess, setShowSuccess] = useState(false);
   const [currency, setCurrency] = useState<'USD' | 'ZAR'>('ZAR');
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [cryptoWallet, setCryptoWallet] = useState<any>(null);
+  const [showCrypto, setShowCrypto] = useState(false);
+  const [bankDetails, setBankDetails] = useState<any>(null);
+  const [showBank, setShowBank] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/crypto').then(r => r.json()).then(setCryptoWallet).catch(() => {});
+    fetch('/api/bank').then(r => r.json()).then(setBankDetails).catch(() => {});
+  }, []);
+
+  const copyAddress = (addr: string) => {
+    navigator.clipboard.writeText(addr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const handleCheckout = async (product: typeof PRODUCTS[0]) => {
     if (!email) {
@@ -145,6 +161,179 @@ export default function SalesPage() {
       <AuroraBackground />
       <LuxuryParticles />
 
+      {/* ═══ BANK/EFT PAYMENT MODAL ═══ */}
+      <AnimatePresence>
+        {showBank && bankDetails && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+            onClick={() => setShowBank(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="luxury-glass p-8 max-w-md w-full max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-display font-black gold-shimmer mb-2">PAY VIA BANK / EFT</h3>
+              <p className="text-dim text-xs mb-6">Make a direct bank transfer. Works with all SA banks.</p>
+
+              {/* Bank details */}
+              <div className="space-y-3 mb-6">
+                {[
+                  { label: 'Bank', value: bankDetails.bank },
+                  { label: 'Account Name', value: bankDetails.accountName },
+                  { label: 'Account Number', value: bankDetails.accountNumber },
+                  { label: 'Branch Code', value: bankDetails.branchCode },
+                  { label: 'Account Type', value: bankDetails.accountType },
+                  { label: 'SWIFT (international)', value: bankDetails.swiftCode },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between bg-void/50 rounded-lg p-3 border border-white/5">
+                    <span className="text-[10px] text-dim uppercase tracking-wider">{item.label}</span>
+                    <button
+                      onClick={() => copy(item.value, `bank-${item.label}`)}
+                      className="text-xs text-gold-bright font-mono font-bold hover:text-gold transition cursor-pointer"
+                      title="Click to copy"
+                    >
+                      {copied && `bank-${item.label}` === `bank-${item.label}` ? item.value : item.value}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Reference format */}
+              <div className="bg-gold/5 border border-gold/10 rounded-lg p-4 mb-4">
+                <p className="text-[10px] text-gold font-bold mb-1">📝 REFERENCE (important!)</p>
+                <p className="text-xs text-warm font-mono">{bankDetails.reference}</p>
+                <p className="text-[10px] text-dim mt-1">Use this exact format so we can match your payment.</p>
+              </div>
+
+              {/* Pricing reminder */}
+              <div className="space-y-2 mb-4">
+                <p className="text-[10px] text-dim uppercase tracking-wider">Plan pricing (ZAR)</p>
+                {bankDetails.pricing?.map((p: any) => (
+                  <div key={p.name} className="flex justify-between text-xs">
+                    <span className="text-muted">{p.name}</span>
+                    <span className="text-warm font-bold">{p.zar} <span className="text-dim">({p.usd})</span></span>
+                  </div>
+                ))}
+              </div>
+
+              {/* eWallet option */}
+              <div className="bg-teal/5 border border-teal/10 rounded-lg p-4 mb-4">
+                <p className="text-[10px] text-teal font-bold mb-1">📱 eWALLET AVAILABLE</p>
+                <p className="text-[10px] text-dim">FNB eWallet accepted — message us for the number:</p>
+                <div className="flex gap-2 mt-2">
+                  <a href="https://wa.me/27662169789?text=Hi%20PulseRevenue%2C%20I%20want%20to%20pay%20via%20eWallet" target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 rounded bg-teal/10 border border-teal/20 text-teal text-[10px] font-bold hover:bg-teal/20 transition">
+                    💬 WhatsApp Us
+                  </a>
+                  <a href="mailto:bonabots801@gmail.com?subject=eWallet%20Payment%20Request" className="px-3 py-1.5 rounded bg-white/5 border border-white/10 text-dim text-[10px] font-bold hover:bg-white/10 transition">
+                    📧 Email Us
+                  </a>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div className="bg-void/30 rounded-lg p-4 mb-6 border border-white/5">
+                <p className="text-[10px] text-gold font-bold mb-2">⚡ HOW TO PAY</p>
+                <ol className="text-[10px] text-dim space-y-1.5">
+                  <li>1. Open your banking app (FNB, Capitec, Standard Bank, etc.)</li>
+                  <li>2. Create a new payment / EFT</li>
+                  <li>3. Enter the account details above</li>
+                  <li>4. Enter the exact reference format</li>
+                  <li>5. Send proof of payment to <span className="text-gold">bonabots801@gmail.com</span></li>
+                  <li>6. We activate your account within 1 hour</li>
+                </ol>
+              </div>
+
+              <button
+                onClick={() => setShowBank(false)}
+                className="w-full py-3 rounded-lg bg-white/5 border border-white/10 text-dim text-xs font-bold hover:bg-white/10 transition"
+              >
+                CLOSE
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ CRYPTO PAYMENT MODAL ═══ */}
+      <AnimatePresence>
+        {showCrypto && cryptoWallet && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-6"
+            onClick={() => setShowCrypto(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="luxury-glass p-8 max-w-md w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-display font-black gold-shimmer mb-2">PAY WITH CRYPTO</h3>
+              <p className="text-dim text-xs mb-6">Send any amount to the address below. Zero fees. Zero approval. Instant.</p>
+
+              <div className="bg-void/50 rounded-lg p-4 mb-4 border border-white/5">
+                <p className="text-[10px] text-dim mb-2 uppercase tracking-wider">Your payment address</p>
+                <div className="flex items-center gap-2">
+                  <code className="text-xs text-gold-bright font-mono break-all flex-1 select-all">{cryptoWallet.address}</code>
+                  <button
+                    onClick={() => copyAddress(cryptoWallet.address)}
+                    className="px-3 py-1.5 rounded bg-gold/10 border border-gold/20 text-gold text-[10px] font-bold flex-shrink-0 hover:bg-gold/20 transition"
+                  >
+                    {copied ? '✓ COPIED' : 'COPY'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  <span className="text-lg">⟠</span>
+                  <div>
+                    <span className="text-warm font-bold">Ethereum (ETH)</span>
+                    <span className="text-dim"> — Send ETH directly</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  <span className="text-lg">💰</span>
+                  <div>
+                    <span className="text-warm font-bold">USDT / USDC</span>
+                    <span className="text-dim"> — ERC-20 tokens (same address)</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs text-muted">
+                  <span className="text-lg">🔗</span>
+                  <div>
+                    <span className="text-warm font-bold">Polygon / Arbitrum / Optimism</span>
+                    <span className="text-dim"> — Same address on all EVM chains</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-gold/5 border border-gold/10 rounded-lg p-3 mb-6">
+                <p className="text-[10px] text-gold">
+                  ⚡ Payments are detected automatically. After sending, your Wealth Machine will be activated within minutes.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowCrypto(false)}
+                className="w-full py-3 rounded-lg bg-white/5 border border-white/10 text-dim text-xs font-bold hover:bg-white/10 transition"
+              >
+                CLOSE
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="relative min-h-screen" style={{ zIndex: 10 }}>
         {/* ═══ NAV ═══ */}
         <nav className="px-6 py-4 flex items-center justify-between max-w-6xl mx-auto">
@@ -180,7 +369,7 @@ export default function SalesPage() {
               {/* Global badge */}
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-teal/20 bg-teal/5 text-teal text-xs mb-10">
                 <Globe className="w-3 h-3" />
-                <span>Accepts payments worldwide — USD, ZAR, EUR, GBP & more</span>
+                <span>Accepts payments worldwide — Crypto, Card, Bank & more</span>
               </div>
 
               {/* Lead capture */}
@@ -344,9 +533,9 @@ export default function SalesPage() {
                     </button>
 
                     <div className="flex items-center justify-center gap-3 mt-3 text-[10px] text-dim">
+                      <button onClick={() => setShowCrypto(true)} className="hover:text-teal transition cursor-pointer">₿ Crypto</button>
+                      <button onClick={() => setShowBank(true)} className="hover:text-gold transition cursor-pointer">🏦 Bank</button>
                       <span>💳 Card</span>
-                      <span>🏦 Bank</span>
-                      <span>📱 Mobile</span>
                     </div>
                   </motion.div>
                 );
