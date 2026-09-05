@@ -3,7 +3,8 @@
 import { motion } from 'framer-motion';
 
 interface LuxuryProgressProps {
-  value: number; // 0-100
+  value: number;
+  max?: number;
   label?: string;
   accent?: 'gold' | 'violet' | 'teal';
   height?: number;
@@ -16,13 +17,14 @@ const accentGradients = {
   teal: 'linear-gradient(90deg, #0d9488, #2dd4bf, #5eead4)',
 };
 
-export function LuxuryProgress({ value, label, accent = 'gold', height = 4, delay = 0 }: LuxuryProgressProps) {
+export function LuxuryProgress({ value, max = 100, label, accent = 'gold', height = 4, delay = 0 }: LuxuryProgressProps) {
+  const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;
   return (
     <div className="w-full">
       {label && (
         <div className="flex items-center justify-between mb-2">
           <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted">{label}</span>
-          <span className="text-[11px] font-bold text-warm">{Math.round(value)}%</span>
+          <span className="text-[11px] font-bold text-warm">{Math.round(pct)}%</span>
         </div>
       )}
       <div
@@ -31,7 +33,7 @@ export function LuxuryProgress({ value, label, accent = 'gold', height = 4, dela
       >
         <motion.div
           initial={{ width: 0 }}
-          animate={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+          animate={{ width: `${pct}%` }}
           transition={{ duration: 1.2, delay, ease: [0.23, 1, 0.32, 1] }}
           className="h-full rounded-full"
           style={{ background: accentGradients[accent] }}

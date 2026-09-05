@@ -107,6 +107,12 @@ export default function SalesPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const copy = (text: string, _id?: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const handleCheckout = async (product: typeof PRODUCTS[0]) => {
     if (!email) {
       setCheckoutError('Enter your email first!');

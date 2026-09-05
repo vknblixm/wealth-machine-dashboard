@@ -19,7 +19,7 @@ export async function GET() {
   }
 
   // Get recent transactions
-  let transactions;
+  let transactions: Array<{ hash: string; from: string; value: string; timestamp: string }> = [];
   try {
     transactions = await getRecentTransactions(wallet.address);
   } catch {
