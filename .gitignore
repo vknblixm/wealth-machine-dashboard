@@ -1,0 +1,6 @@
+node_modules/
+.next/
+.tmp-api/
+out/
+.env.local
+.env.*
